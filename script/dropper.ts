@@ -1,7 +1,7 @@
-#!/usr/bin/env -S deno run -A --ext ts
+#!/usr/bin/env -S deno run --allow-read --allow-write --allow-net --ext ts
 import { parseArgs } from "node:util";
 import fs from "node:fs";
-import { extract, toMarkdown } from "@mizchi/readability";
+import { extract, toMarkdown } from "npm:@mizchi/readability@0.7.7";
 
 function normalizeForFilename(
   title: string,

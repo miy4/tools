@@ -1,8 +1,0 @@
-{
-  "tasks": {
-    "build": "deno compile --allow-read --allow-write --allow-net --output dropper main.ts"
-  },
-  "imports": {
-    "@mizchi/readability": "npm:@mizchi/readability@^0.7.7"
-  }
-}
