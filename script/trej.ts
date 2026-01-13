@@ -1,7 +1,7 @@
-#!/usr/bin/env -S deno run -A --ext ts
+#!/usr/bin/env -S deno run --allow-read --allow-write --allow-net --allow-env --ext ts
 import { parseArgs } from "node:util";
-import { generateText } from "npm:ai";
-import { google } from "npm:@ai-sdk/google";
+import { generateText } from "npm:ai@6.0.20";
+import { google } from "npm:@ai-sdk/google@3.0.6";
 
 async function main() {
   const arg = parseArgs({
