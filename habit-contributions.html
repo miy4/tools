@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Habit Contributions Graph</title>
+<style>
+  body {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    margin: 24px;
+    color: #24292f;
+  }
+
+  h1 {
+    font-size: 20px;
+    margin-bottom: 16px;
+    cursor: pointer;
+  }
+
+  h1[contenteditable="true"] {
+    outline: 2px solid #0969da;
+    border-radius: 4px;
+    padding: 2px 4px;
+  }
+
+  .controls {
+    margin-bottom: 16px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+
+  input, button {
+    font-size: 14px;
+  }
+
+  .months {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 14px;
+    column-gap: 3px;
+    font-size: 12px;
+    margin-bottom: 4px;
+    color: #57606a;
+  }
+
+  .graph {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 14px;
+    grid-template-rows: repeat(7, 14px);
+    column-gap: 3px;
+    row-gap: 3px;
+  }
+
+  .day {
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+  }
+
+  /* GitHub-style contribution colors */
+  .level-0 { background: #ebedf0; }
+  .level-1 { background: #9be9a8; }
+  .level-2 { background: #40c463; }
+  .level-3 { background: #30a14e; }
+  .level-4 { background: #216e39; }
+
+  .legend {
+    margin-top: 12px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .legend-box {
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+  }
+
+  /* Menu button (bottom-right corner) */
+  .menu {
+    position: fixed;
+    bottom: 12px;
+    right: 12px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid #d0d7de;
+    background: #fff;
+    color: #57606a;
+    font-size: 16px;
+    line-height: 26px;
+    text-align: center;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .menu:hover {
+    background: #f6f8fa;
+  }
+
+  /* Import/Export panel */
+  .panel {
+    position: fixed;
+    bottom: 44px;
+    right: 12px;
+    border: 1px solid #d0d7de;
+    background: #fff;
+    padding: 8px;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.1);
+    display: none;
+  }
+
+  .panel button {
+    display: block;
+    width: 100%;
+    margin: 4px 0;
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<h1 id="title">Habit Contributions Graph</h1>
+
+<div class="controls">
+  <input type="date" id="dateInput">
+  <input type="number" id="valueInput" min="0" max="1" step="0.1" value="1.0">
+  <button id="saveBtn">Save</button>
+</div>
+
+<div id="months" class="months"></div>
+<div id="graph" class="graph"></div>
+
+<div class="legend">
+  Less
+  <div class="legend-box level-0"></div>
+  <div class="legend-box level-1"></div>
+  <div class="legend-box level-2"></div>
+  <div class="legend-box level-3"></div>
+  <div class="legend-box level-4"></div>
+  More
+</div>
+
+<div class="menu" id="menu">⋯</div>
+
+<div class="panel" id="panel">
+  <button id="exportBtn">Export JSON</button>
+  <button id="importBtn">Import JSON</button>
+  <input type="file" id="fileInput" accept="application/json" hidden>
+</div>
+
+<script>
+  // ============================================================================
+  // Constants
+  // ============================================================================
+  const STORAGE_KEY = "habitContributions";
+  const TITLE_KEY = "habitTitle";
+  const DEFAULT_TITLE = "Habit Contributions Graph";
+  
+  // Number of weeks to display (52 weeks = 1 year)
+  const WEEKS_TO_DISPLAY = 52;
+  
+  // Total days = 53 weeks to ensure full year coverage
+  const TOTAL_DAYS = 7 * 53;
+
+  // ============================================================================
+  // DOM Elements
+  // ============================================================================
+  const titleEl = document.getElementById("title");
+  const graphEl = document.getElementById("graph");
+  const monthsEl = document.getElementById("months");
+  const dateInput = document.getElementById("dateInput");
+  const valueInput = document.getElementById("valueInput");
+  const saveBtn = document.getElementById("saveBtn");
+  const menu = document.getElementById("menu");
+  const panel = document.getElementById("panel");
+  const exportBtn = document.getElementById("exportBtn");
+  const importBtn = document.getElementById("importBtn");
+  const fileInput = document.getElementById("fileInput");
+
+  // ============================================================================
+  // Initialization
+  // ============================================================================
+  function initialize() {
+    // Set today's date as default in the date input
+    const today = new Date();
+    dateInput.value = formatDateToLocalYMD(today);
+
+    // Load and display the saved title
+    titleEl.textContent = localStorage.getItem(TITLE_KEY) || DEFAULT_TITLE;
+
+    // Set up event listeners
+    setupEventListeners();
+
+    // Render the graph
+    renderGraph();
+  }
+
+  // ============================================================================
+  // Event Listeners
+  // ============================================================================
+  function setupEventListeners() {
+    // Title editing
+    titleEl.addEventListener("click", handleTitleClick);
+    titleEl.addEventListener("keydown", handleTitleKeydown);
+    titleEl.addEventListener("blur", finishTitleEdit);
+
+    // Save button
+    saveBtn.addEventListener("click", handleSaveContribution);
+
+    // Menu panel
+    menu.addEventListener("click", handleMenuClick);
+    panel.addEventListener("click", handlePanelClick);
+    document.addEventListener("click", handleDocumentClick);
+
+    // Export/Import
+    exportBtn.addEventListener("click", handleExport);
+    importBtn.addEventListener("click", handleImportClick);
+    fileInput.addEventListener("change", handleFileSelected);
+  }
+
+  // ============================================================================
+  // Title Editing Functions
+  // ============================================================================
+  function handleTitleClick() {
+    titleEl.setAttribute("contenteditable", "true");
+    titleEl.focus();
+    selectAllContent(titleEl);
+  }
+
+  function selectAllContent(element) {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  function handleTitleKeydown(e) {
+    // Save on Enter key
+    if (e.key === "Enter") {
+      e.preventDefault();
+      titleEl.blur();
+    }
+  }
+
+  function finishTitleEdit() {
+    titleEl.removeAttribute("contenteditable");
+    const text = titleEl.textContent.trim() || DEFAULT_TITLE;
+    titleEl.textContent = text;
+    localStorage.setItem(TITLE_KEY, text);
+  }
+
+  // ============================================================================
+  // Data Storage Functions
+  // ============================================================================
+  function loadContributionData() {
+    const data = localStorage.getItem(STORAGE_KEY);
+    return data ? JSON.parse(data) : {};
+  }
+
+  function saveContributionData(data) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }
+
+  // ============================================================================
+  // Date Utility Functions
+  // ============================================================================
+  /**
+   * Formats a Date object to YYYY-MM-DD string based on the local timezone
+   */
+  function formatDateToLocalYMD(date) {
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  /**
+   * Gets the Sunday of the current week for a given date
+   */
+  function getSundayOfWeek(date) {
+    const sunday = new Date(date);
+    sunday.setDate(date.getDate() - date.getDay());
+    return sunday;
+  }
+
+  /**
+   * Gets the start date for the graph (52 weeks ago from this Sunday)
+   */
+  function getGraphStartDate() {
+    const today = new Date();
+    const thisSunday = getSundayOfWeek(today);
+    const startDate = new Date(thisSunday);
+    startDate.setDate(thisSunday.getDate() - 7 * WEEKS_TO_DISPLAY);
+    return startDate;
+  }
+
+  // ============================================================================
+  // Level Calculation
+  // ============================================================================
+  /**
+   * Converts a contribution value (0-1) to a level (0-4)
+   * Used to determine the color intensity of each day cell
+   */
+  function getContributionLevel(value) {
+    if (value <= 0) return 0;
+    if (value <= 0.25) return 1;
+    if (value <= 0.5) return 2;
+    if (value <= 0.75) return 3;
+    return 4;
+  }
+
+  // ============================================================================
+  // Graph Rendering
+  // ============================================================================
+  function renderGraph() {
+    graphEl.innerHTML = "";
+    monthsEl.innerHTML = "";
+
+    const contributionData = loadContributionData();
+    const startDate = getGraphStartDate();
+
+    let lastMonthDisplayed = -1;
+    let currentWeekIndex = -1;
+
+    // Iterate through all days (53 weeks × 7 days)
+    for (let dayOffset = 0; dayOffset < TOTAL_DAYS; dayOffset++) {
+      const currentDate = new Date(startDate);
+      currentDate.setDate(startDate.getDate() + dayOffset);
+
+      // Start a new column on Sunday (beginning of week)
+      if (currentDate.getDay() === 0) {
+        currentWeekIndex++;
+        
+        // Display month label when month changes
+        if (currentDate.getMonth() !== lastMonthDisplayed) {
+          createMonthLabel(currentDate, currentWeekIndex);
+          lastMonthDisplayed = currentDate.getMonth();
+        }
+      }
+
+      createDayCell(currentDate, contributionData);
+    }
+  }
+
+  /**
+   * Creates and appends a month label to the months row
+   */
+  function createMonthLabel(date, weekIndex) {
+    const monthLabel = document.createElement("div");
+    monthLabel.style.gridColumn = weekIndex + 1;
+    monthLabel.textContent = date.toLocaleString("en-US", { month: "short" });
+    monthsEl.appendChild(monthLabel);
+  }
+
+  /**
+   * Creates and appends a day cell to the graph
+   */
+  function createDayCell(date, contributionData) {
+    const dateKey = formatDateToLocalYMD(date);
+    const value = contributionData[dateKey] ?? 0;
+    const level = getContributionLevel(value);
+
+    const cell = document.createElement("div");
+    cell.className = `day level-${level}`;
+    // Grid row: Sunday (0) = row 1, Monday (1) = row 2, etc.
+    cell.style.gridRow = date.getDay() + 1;
+    cell.title = `${dateKey}: ${value}`;
+    
+    graphEl.appendChild(cell);
+  }
+
+  // ============================================================================
+  // Save Contribution Handler
+  // ============================================================================
+  function handleSaveContribution() {
+    const dateStr = dateInput.value;
+    const value = parseFloat(valueInput.value);
+
+    // Validate input
+    if (!dateStr || isNaN(value)) {
+      return;
+    }
+
+    const contributionData = loadContributionData();
+
+    // Delete entry if value is 0 or negative
+    if (value <= 0) {
+      delete contributionData[dateStr];
+    } else {
+      // Clamp value between 0 and 1
+      contributionData[dateStr] = Math.min(1, Math.max(0, value));
+    }
+
+    saveContributionData(contributionData);
+    renderGraph();
+  }
+
+  // ============================================================================
+  // Menu Panel Handlers
+  // ============================================================================
+  function handleMenuClick(e) {
+    e.stopPropagation();
+    togglePanel();
+  }
+
+  function handlePanelClick(e) {
+    // Prevent panel clicks from closing the panel
+    e.stopPropagation();
+  }
+
+  function handleDocumentClick() {
+    // Close panel when clicking anywhere outside
+    closePanel();
+  }
+
+  function togglePanel() {
+    const isVisible = panel.style.display === "block";
+    panel.style.display = isVisible ? "none" : "block";
+  }
+
+  function closePanel() {
+    panel.style.display = "none";
+  }
+
+  // ============================================================================
+  // Export/Import Handlers
+  // ============================================================================
+  function handleExport() {
+    const exportData = {
+      title: localStorage.getItem(TITLE_KEY) || DEFAULT_TITLE,
+      contributions: loadContributionData()
+    };
+
+    // Create and download JSON file
+    const blob = new Blob(
+      [JSON.stringify(exportData, null, 2)], 
+      { type: "application/json" }
+    );
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "habit-contributions.json";
+    link.click();
+
+    // Clean up
+    URL.revokeObjectURL(url);
+    closePanel();
+  }
+
+  function handleImportClick() {
+    fileInput.click();
+  }
+
+  function handleFileSelected() {
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const importedData = JSON.parse(reader.result);
+        
+        // Import title if present
+        if (importedData.title) {
+          localStorage.setItem(TITLE_KEY, importedData.title);
+        }
+        
+        // Import contributions if present
+        if (importedData.contributions) {
+          saveContributionData(importedData.contributions);
+        }
+
+        // Reload page to reflect changes
+        location.reload();
+      } catch (error) {
+        alert("Failed to import file. Please ensure it's a valid JSON file.");
+        console.error("Import error:", error);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // ============================================================================
+  // Start Application
+  // ============================================================================
+  initialize();
+</script>
+
+</body>
+</html>
