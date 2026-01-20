@@ -1,5 +1,7 @@
 # tools
 
+- [Habit Contributions Graph](https://miy4.github.io/tools/habit-contributions.html) tracks daily habits and displays them in a GitHub-style contribution graph
+
 ## Script
 
 - [trej.ts](https://github.com/miy4/tools/blob/main/trej.ts) Auto-detects Japanese or English input and translates it to the other language using a Google Gemini API
